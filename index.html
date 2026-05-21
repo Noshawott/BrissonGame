@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple 2D Circle Platformer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #222;
+            color: #fff;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        h1 {
+            margin-bottom: 10px;
+        }
+        p {
+            margin: 0 0 20px 0;
+            color: #aaa;
+        }
+        canvas {
+            background-color: #333;
+            border: 4px solid #555;
+            border-radius: 4px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Circle Platformer</h1>
+    <p>Use <strong>A / D</strong> or <strong>Left / Right Arrows</strong> to move. Press <strong>Space</strong> or <strong>W</strong> to jump.</p>
+    
+    <canvas id="gameCanvas" width="800" height="500"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // --- GAME CONFIGURATION ---
+        const gravity = 0.5;
+        const friction = 0.85;
+
+        // --- GAME OBJECTS ---
+        const player = {
+            x: 100,
+            y: 300,
+            radius: 15,
+            vx: 0,
+            vy: 0,
+            speed: 5,
+            jumpStrength: 12,
+            grounded: false,
+            color: #3498db
+        };
+
+        const goal = {
+            x: 720,
+            y: 110,
+            width: 30,
+            height: 30,
+            color: #2ecc71
+        };
+
+        const platforms = [
+            // Ground floor
+            { x: 0, y: 460, width: 800, height: 40 },
+            // Floating platforms
+            { x: 150, y: 370, width: 120, height: 15 },
+            { x: 320, y: 290, width: 150, height: 15 },
+            { x: 520, y: 210, width: 120, height: 15 },
+            { x: 680, y: 140, width: 100, height: 15 }
+        ];
+
+        // --- KEYBOARD INPUT TRACKING ---
+        const keys = {
+            left: false,
+            right: false,
+            up: false
+        };
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = true;
+            if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = true;
+            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W' || e.key === ' ') {
+                keys.up = true;
+                e.preventDefault(); // Prevents spacebar from scrolling down the page
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = false;
+            if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false;
+            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W' || e.key === ' ') keys.up = false;
+        });
+
+        // --- GAME LOGIC ENGINE ---
+        function update() {
+            // Apply horizontal movement based on inputs
+            if (keys.left) {
+                player.vx = -player.speed;
+            } else if (keys.right) {
+                player.vx = player.speed;
+            } else {
+                // Smoothly bring player to a stop when no keys are pressed
+                player.vx *= friction;
+                if (Math.abs(player.vx) < 0.1) player.vx = 0;
+            }
+
+            // Apply gravity
+            player.vy += gravity;
+
+            // Trigger jump only if player is standing securely on a platform
+            if (keys.up && player.grounded) {
+                player.vy = -player.jumpStrength;
+                player.grounded = false;
+            }
+
+            // Update positions
+            player.x += player.vx;
+            player.y += player.vy;
+
+            // Screen boundary checks (Keep player inside canvas horizontally)
+            if (player.x - player.radius < 0) {
+                player.x = player.radius;
+                player.vx = 0;
+            }
+            if (player.x + player.radius > canvas.width) {
+                player.x = canvas.width - player.radius;
+                player.vx = 0;
+            }
+
+            // --- COLLISION RESOLUTION ---
+            player.grounded = false; // Assume in mid-air until verified
+
+            for (let i = 0; i < platforms.length; i++) {
+                let plat = platforms[i];
+
+                // Approximate circle bounding box for platform collision checks
+                if (player.x + player.radius > plat.x &&
+                    player.x - player.radius < plat.x + plat.width &&
+                    player.y + player.radius > plat.y &&
+                    player.y - player.radius < plat.y + plat.height) {
+
+                    // Check if player is falling down onto the top surface of the platform
+                    if (player.vy > 0 && (player.y - player.vy + player.radius) <= plat.y + 4) {
+                        player.y = plat.y - player.radius;
+                        player.vy = 0;
+                        player.grounded = true;
+                    }
+                    // Check if player hits the underside of a platform
+                    else if (player.vy < 0 && (player.y - player.vy - player.radius) >= plat.y + plat.height - 4) {
+                        player.y = plat.y + plat.height + player.radius;
+                        player.vy = 0;
+                    }
+                }
+            }
+
+            // --- GOAL / WIN CONDITION ---
+            if (player.x + player.radius > goal.x &&
+                player.x - player.radius < goal.x + goal.width &&
+                player.y + player.radius > goal.y &&
+                player.y - player.radius < goal.y + goal.height) {
+                
+                alert('You Win! Press OK to reset.');
+                resetGame();
+            }
+        }
+
+        function resetGame() {
+            player.x = 100;
+            player.y = 300;
+            player.vx = 0;
+            player.vy = 0;
+            player.grounded = false;
+        }
+
+        // --- RENDERING ENGINE ---
+        function draw() {
+            // Clear the canvas container frame
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Platforms
+            ctx.fillStyle = '#555';
+            platforms.forEach(plat => {
+                ctx.fillRect(plat.x, plat.y, plat.width, plat.height);
+            });
+
+            // Draw Goal Flag
+            ctx.fillStyle = goal.color;
+            ctx.fillRect(goal.x, goal.y, goal.width, goal.height);
+
+            // Draw Player Circle
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#3498db';
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        // --- MAIN GAME LOOP ---
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start the loop
+        gameLoop();
+    </script>
+</body>
+</html>
