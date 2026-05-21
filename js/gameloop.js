@@ -1,0 +1,339 @@
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+
+let gameState = "PLAYING";
+
+let px = 80, py = 100, vx = 0, vy = 0, angle = 0, grounded = false;
+const radius = 15;
+
+
+let stuckFrames = 0;
+
+
+let checkpoint = { x: 80, y: 100 }; 
+
+
+let camX = px - canvas.width / 2;
+let camY = py - canvas.height / 2;
+const camSmoothing = 0.08;
+
+
+let rope = { active: false, x: 0, y: 0, length: 0 };
+
+
+const platforms = [
+    [0, 150, 200, 30],       
+    [550, 230, 150, 30],    
+    [1050, 320, 150, 30],    
+    [1550, 420, 150, 30],   
+    [2100, 480, 200, 30],    
+    [2700, 560, 400, 30],    
+    
+    //graple platforms
+    [250, -180, 250, 40],      
+    [750, -150, 250, 40],      
+    [1250, -120, 250, 40],    
+    [1750, -100, 250, 40],    
+    [2350, -80, 300, 40]     
+];
+
+const slopes = [
+    [200, 150, 450, 230],    
+    [700, 230, 950, 320],   
+    [1200, 320, 1450, 420],  
+    [1700, 420, 1950, 480],  
+    [2300, 480, 2550, 560]   
+];
+
+const checkpoints = [
+    [570, 210, 30, 20],     
+    [1570, 400, 30, 20],    
+    [2120, 460, 30, 20]     
+];
+
+const goal = { x: 2950, y: 525, w: 25, h: 25 };
+
+const keys = {};
+window.onkeydown = (e) => {
+    keys[e.key] = true;
+    if (gameState === "VICTORY" && e.key === " ") {
+        resetGameToStart();
+    }
+};
+window.onkeyup = (e) => keys[e.key] = false;
+
+function resetGameToStart() {
+    checkpoint.x = 80;
+    checkpoint.y = 100;
+    respawnPlayerAtCheckpoint();
+    gameState = "PLAYING";
+}
+
+function respawnPlayerAtCheckpoint() {
+    px = checkpoint.x; 
+    py = checkpoint.y - 10; 
+    vx = 0; 
+    vy = 0; 
+    angle = 0;
+    rope.active = false;
+    stuckFrames = 0;
+}
+
+canvas.onmousedown = (e) => {
+    if (gameState !== "PLAYING") return; 
+    
+    let rect = canvas.getBoundingClientRect();
+    let worldX = e.clientX - rect.left + camX;
+    let worldY = e.clientY - rect.top + camY;
+
+    for (let p of platforms) {
+        if (worldX >= p[0] && worldX <= p[0] + p[2] && worldY >= p[1] && worldY <= p[1] + p[3]) {
+            rope.x = worldX; rope.y = worldY; rope.active = true;
+            let dx = px - rope.x, dy = py - rope.y;
+            rope.length = Math.sqrt(dx * dx + dy * dy);
+            stuckFrames = 0;
+            break; 
+        }
+    }
+};
+window.onmouseup = () => {
+    rope.active = false;
+    stuckFrames = 0;
+};
+
+function loop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (gameState === "PLAYING") {
+        let accel = rope.active ? 0.05 : 0.15; 
+        if (keys['ArrowLeft'] || keys['a']) vx = Math.max(-12, vx - accel);
+        else if (keys['ArrowRight'] || keys['d']) vx = Math.min(12, vx + accel);
+        else if (!rope.active && grounded) vx *= 0.98; 
+
+        if ((keys[' '] || keys['ArrowUp'] || keys['w']) && grounded) {
+            vy = -9;
+            grounded = false;
+            stuckFrames = 0;
+        }
+
+        vy += 0.4; 
+        px += vx;
+        py += vy;
+
+
+        if (rope.active) {
+            let currentSpeed = Math.sqrt(vx * vx + vy * vy);
+            
+            if (grounded && currentSpeed < 0.5) {
+                stuckFrames++;
+                
+                let winchSpeed = 2 + Math.min(5, stuckFrames / 12); 
+                
+                rope.length -= winchSpeed; 
+                if (rope.length < 50) rope.length = 50; 
+            } else {
+                if (stuckFrames > 0) stuckFrames -= 2;
+                if (stuckFrames < 0) stuckFrames = 0;
+            }
+
+            let dx = px - rope.x, dy = py - rope.y;
+            let currentDist = Math.sqrt(dx * dx + dy * dy);
+            if (currentDist > 0) {
+                let nx = dx / currentDist, ny = dy / currentDist;
+                px = rope.x + nx * rope.length;
+                py = rope.y + ny * rope.length;
+                let velAlongNormal = vx * nx + vy * ny;
+                vx -= velAlongNormal * nx;
+                vy -= velAlongNormal * ny;
+                vx -= nx * 0.05; vy -= ny * 0.05; 
+            }
+        } else {
+            stuckFrames = 0;
+        }
+
+
+        grounded = false;
+        for (let s of slopes) {
+            let x1 = s[0], y1 = s[1], x2 = s[2], y2 = s[3];
+            let dx = x2 - x1, dy = y2 - y1;
+            let segLength = Math.sqrt(dx * dx + dy * dy);
+            let tx = dx / segLength, ty = dy / segLength;
+            let pAx = px - x1, pAy = py - y1;
+
+            let projection = pAx * tx + pAy * ty;
+            let t = Math.max(0, Math.min(segLength, projection));
+            let closestX = x1 + t * tx, closestY = y1 + t * ty;
+
+            let distVecX = px - closestX, distVecY = py - closestY;
+            let distance = Math.sqrt(distVecX * distVecX + distVecY * distVecY);
+
+            if (distance <= radius && px >= Math.min(x1, x2) - 2 && px <= Math.max(x1, x2) + 2) {
+                if (vy >= -0.5 && py <= closestY + 2) {
+                    
+                    if (rope.active) {
+                        let currentSpeed = Math.sqrt(vx * vx + vy * vy);
+                        if (currentSpeed < 0.5) {
+                            py = closestY - radius;
+                            grounded = true;
+                            vx = 0;
+                            vy = 0;
+                        } else {
+                            py = closestY - radius;
+                            grounded = true;
+                            let currentSpeedOnSlope = vx * tx + vy * ty;
+                            vx = currentSpeedOnSlope * tx;
+                            vy = currentSpeedOnSlope * ty;
+                            rope.length -= 3;
+                            if (rope.length < 40) rope.length = 40;
+                        }
+                    } else {
+                        py = closestY - radius;
+                        grounded = true;
+
+                        let currentSpeedOnSlope = vx * tx + vy * ty;
+                        vx = currentSpeedOnSlope * tx;
+                        vy = currentSpeedOnSlope * ty;
+
+                        let gravityPull = 0.4 * ty; 
+                        vx += gravityPull * tx;
+                        vy += gravityPull * ty;
+                    }
+                }
+            }
+        }
+        for (let p of platforms) {
+            if (px + radius > p[0] && px - radius < p[0] + p[2] && 
+                py + radius > p[1] && py - radius < p[1] + p[3]) {
+                
+                if (rope.active) {
+                    if (Math.abs(vx) >= 0.5) {
+                        if (py > p[1]) {
+                            py = p[1] - radius;
+                            if (vy > 0) vy = 0;
+                        }
+                        
+                        rope.length -= 6; 
+                        if (rope.length < 40) rope.length = 40; 
+                        
+                        let dx = px - rope.x, dy = py - rope.y;
+                        let currentDist = Math.sqrt(dx * dx + dy * dy);
+                        if (currentDist > 0) {
+                            px = rope.x + (dx / currentDist) * rope.length;
+                            py = rope.y + (dy / currentDist) * rope.length;
+                        }
+                        if (py > p[1] - radius) py = p[1] - radius;
+                    } else {
+                        py = p[1] - radius;
+                        vy = 0;
+                        grounded = true;
+                    }
+                } else if (vy > 0) { 
+                    py = p[1] - radius; 
+                    vy = 0; 
+                    grounded = true;
+                }
+            }
+        }
+
+        for (let cp of checkpoints) {
+            if (px + radius > cp[0] && px - radius < cp[0] + cp[2] &&
+                py + radius > cp[1] && py - radius < cp[1] + cp[3]) {
+                checkpoint.x = cp[0] + cp[2] / 2;
+                checkpoint.y = cp[1];
+            }
+        }
+
+        angle += vx / radius; 
+        
+
+        if (py > 950) {
+            respawnPlayerAtCheckpoint();
+        }
+
+
+        if (px + radius > goal.x && px - radius < goal.x + goal.w &&
+            py + radius > goal.y && py - radius < goal.y + goal.h) {
+            gameState = "VICTORY";
+        }
+
+        //ca,era
+        let targetCamX = px - canvas.width / 2;
+        let targetCamY = py - canvas.height / 2;
+        camX += (targetCamX - camX) * camSmoothing;
+        camY += (targetCamY - camY) * camSmoothing;
+        if (camX < 0) camX = 0; 
+
+
+        ctx.save(); 
+        ctx.translate(-camX, -camY); 
+
+        //platforms
+        ctx.fillStyle = '#666'; 
+        for (let p of platforms) ctx.fillRect(p[0], p[1], p[2], p[3]);
+        //checkpoint
+        ctx.fillStyle = '#9b59b6';
+        for (let cp of checkpoints) ctx.fillRect(cp[0], cp[1], cp[2], cp[3]);
+
+        //slopes
+        ctx.strokeStyle = '#f1c40f'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+        for (let s of slopes) {
+            ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(s[2], s[3]); ctx.stroke();
+        }
+
+        ctx.fillStyle = '#2ecc71'; ctx.fillRect(goal.x, goal.y, goal.w, goal.h);
+
+        if (rope.active) {
+            ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(rope.x, rope.y); ctx.stroke();
+        }
+
+        ctx.save();                 
+        ctx.translate(px, py); ctx.rotate(angle);          
+        ctx.fillStyle = '#3498db';
+        ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#2c3e50'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(-radius, 0); ctx.lineTo(radius, 0); ctx.stroke();
+        ctx.restore();              
+
+        ctx.restore(); 
+
+    } else if (gameState === "VICTORY") {
+        ctx.fillStyle = 'rgba(20, 20, 20, 0.85)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#2c3e50';
+        ctx.strokeStyle = '#2ecc71';
+        ctx.lineWidth = 4;
+        ctx.roundRect((canvas.width/2) - 200, (canvas.height/2) - 130, 400, 260, 15);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#2ecc71';
+        ctx.font = 'bold 36px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText("VICTORY!", canvas.width / 2, (canvas.height/2) - 50);
+
+        ctx.fillStyle = '#ecf0f1';
+        ctx.font = '18px sans-serif';
+        ctx.fillText("You crossed the chasms and completed the track!", canvas.width / 2, (canvas.height/2));
+
+        ctx.fillStyle = '#e67e22';
+        ctx.roundRect((canvas.width/2) - 125, (canvas.height/2) + 40, 250, 45, 8);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 15px sans-serif';
+        ctx.fillText("PRESS SPACE TO RESTART", canvas.width / 2, (canvas.height/2) + 68);
+    }
+
+    requestAnimationFrame(loop);
+}
+loop();
