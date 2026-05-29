@@ -22,18 +22,115 @@
             top: 15px;
             left: 50%;
             transform: translateX(-50%);
-            color: rgba(255, 255, 255, 0.8);
+            color: rgba(255, 255, 255, 0.4);
             margin: 0;
             pointer-events: none;
             font-weight: normal;
-            font-size: 18px;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            font-size: 14px;
+            letter-spacing: 1px;
+            z-index: 5;
+        }
+
+        /* --- MINIMALIST MENU OVERLAY STYLES --- */
+        .menu-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(34, 34, 34, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+        .menu-title {
+            color: #fff;
+            font-size: 40px;
+            font-weight: 300;
+            margin-bottom: 50px;
+            letter-spacing: 4px;
+        }
+        .menu-btn {
+            background: transparent;
+            color: #bbb;
+            border: 1px solid #444;
+            padding: 12px 30px;
+            font-size: 15px;
+            font-weight: normal;
+            letter-spacing: 2px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 8px;
+            width: 180px;
+            transition: all 0.2s ease;
+        }
+        .menu-btn:hover {
+            color: #fff;
+            border-color: #888;
+            background: rgba(255, 255, 255, 0.03);
+        }
+        .menu-btn:active {
+            background: rgba(255, 255, 255, 0.07);
+        }
+
+        /* --- SIMPLISTIC CONTROLS PANEL --- */
+        .modal {
+            color: #ccc;
+            text-align: left;
+            width: 380px;
+            display: none;
+            flex-direction: column;
+        }
+        .modal h2 {
+            margin-top: 0;
+            font-weight: 300;
+            color: #fff;
+            font-size: 24px;
+            letter-spacing: 2px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .control-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 14px 0;
+            font-size: 14px;
+            color: #aaa;
+            letter-spacing: 0.5px;
+        }
+        .key-cap {
+            color: #fff;
+            font-weight: 600;
+            font-family: monospace;
+            font-size: 13px;
         }
     </style>
 </head>
 <body>
 
-    <h3 id="ui-text">[f11] to fullscreen.</h3>
+    <h3 id="ui-text">[F11] fullscreen</h3>
+    
+    <div id="main-menu" class="menu-screen">
+        <div class="menu-title">SWING BALL RUN</div>
+        <button class="menu-btn" onclick="startGame()">PLAY</button>
+        <button class="menu-btn" onclick="showControls()">CONTROLS</button>
+    </div>
+
+    <div id="controls-menu" class="menu-screen" style="display: none;">
+        <div class="modal" style="display: flex;">
+            <h2>CONTROLS</h2>
+            <div class="control-row"><span>Move Left / Right</span> <span class="key-cap">A / D</span></div>
+            <div class="control-row"><span>Jump</span> <span class="key-cap">W / Space</span></div>
+            <div class="control-row"><span>Fast Fall</span> <span class="key-cap">S</span></div>
+            <div class="control-row"><span>Air Dash</span> <span class="key-cap">Shift + A / D</span></div>
+            <div class="control-row"><span>Rope</span> <span class="key-cap">Left Click on Platforms Above</span></div>
+            <button class="menu-btn" style="margin: 40px auto 0 auto; width: 120px; padding: 8px;" onclick="hideControls()">BACK</button>
+        </div>
+    </div>
+
     <canvas id="canvas"></canvas>
 
 <script>
@@ -47,10 +144,11 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-let gameState = "PLAYING";
+let gameState = "MENU";
 
-let px = 80, py = 100, vx = 0, vy = 0, angle = 0, grounded = false;
+let px = 80, py = 100, vx = 0, vy = 0, angle = 0, grounded = false, onSlope = false;
 const radius = 15;
+const visualStrokeThickness = 3; 
 
 let stuckFrames = 0;
 
@@ -109,25 +207,36 @@ window.onkeydown = (e) => {
 };
 window.onkeyup = (e) => keys[e.key] = false;
 
+function startGame() {
+    document.getElementById('main-menu').style.display = 'none';
+    gameState = "PLAYING";
+}
+
+function showControls() {
+    document.getElementById('main-menu').style.display = 'none';
+    document.getElementById('controls-menu').style.display = 'flex';
+}
+
+function hideControls() {
+    document.getElementById('controls-menu').style.display = 'none';
+    document.getElementById('main-menu').style.display = 'flex';
+}
+
 function triggerDash() {
     if (dashCooldown > 0 || gameState !== "PLAYING") return;
 
     let dx = 0; 
-    let dy = 0; 
+    if (keys['a']) dx = -1;
+    if (keys['d']) dx = 1;
 
-    if (keys['ArrowLeft'] || keys['a']) dx = -1;
-    if (keys['ArrowRight'] || keys['d']) dx = 1;
-
-    if (dx === 0) {
-        return; 
-    }
+    if (dx === 0) return; 
 
     const dashPower = 32;
     vx = dx * dashPower;
-    vy = dy * dashPower; 
+    vy = 0; 
 
     grounded = false;
-
+    onSlope = false;
     dashActiveTimer = 15; 
     dashCooldown = 50;    
 }
@@ -181,23 +290,96 @@ function loop() {
         if (dashCooldown > 0) dashCooldown--;
         if (dashActiveTimer > 0) dashActiveTimer--;
 
-        let accel = rope.active ? 0.05 : 0.15; 
-        if (keys['ArrowLeft'] || keys['a']) vx = Math.max(-12, vx - accel);
-        else if (keys['ArrowRight'] || keys['d']) vx = Math.min(12, vx + accel);
-        else if (!rope.active && grounded && dashActiveTimer <= 0) vx *= 0.98; 
+        let oldPy = py;
 
-        if ((keys[' '] || keys['ArrowUp'] || keys['w']) && grounded && dashActiveTimer <= 0) {
-            vy = -9;
+        if (!grounded && keys['s']) {
+            rope.active = false;
+            vy = 16;
+            vx *= 0.94;
+        } else {
+            let accel = rope.active ? 0.05 : (grounded ? 0.1 : 0.15); 
+            if (keys['a']) vx = Math.max(-16, vx - accel);
+            else if (keys['d']) vx = Math.min(16, vx + accel);
+            else if (!rope.active && grounded && dashActiveTimer <= 0) {
+                vx *= onSlope ? 0.995 : 0.98; 
+            }
+        }
+
+        if ((keys[' '] || keys['w']) && grounded && dashActiveTimer <= 0) {
+            vy = onSlope ? -11 : -9; 
             grounded = false;
+            onSlope = false;
             stuckFrames = 0;
         }
 
-        if (dashActiveTimer <= 0) {
+        if (!onSlope && dashActiveTimer <= 0 && !(keys['s'] && !grounded)) {
             vy += 0.4; 
         }
+
         
-        px += vx;
-        py += vy;
+        onSlope = false;
+        let snapX, snapY, tangentX, tangentY;
+
+        for (let s of slopes) {
+            let x1 = s[0], y1 = s[1], x2 = s[2], y2 = s[3];
+            let dx = x2 - x1, dy = y2 - y1;
+            let len = Math.sqrt(dx * dx + dy * dy);
+            if (len === 0) continue;
+
+            let tx = dx / len;
+            let ty = dy / len;
+
+            let pX = (px + vx) - x1;
+            let pY = (py + vy) - y1;
+            let dot = pX * tx + pY * ty;
+            let t = Math.max(0, Math.min(len, dot));
+
+            let cX = x1 + t * tx;
+            let cY = y1 + t * ty;
+
+            let distVecX = (px + vx) - cX;
+            let distVecY = (py + vy) - cY;
+            let dist = Math.sqrt(distVecX * distVecX + distVecY * distVecY);
+
+    
+            if (dist < radius + visualStrokeThickness) {
+
+                let nx = ty;
+                let ny = -tx;
+                if (ny > 0) { nx = -nx; ny = -ny; } 
+
+                let checkDot = distVecX * nx + distVecY * ny;
+                if (checkDot > -10) {
+                    onSlope = true;
+
+                    snapX = cX + nx * (radius + visualStrokeThickness);
+                    snapY = cY + ny * (radius + visualStrokeThickness); 
+                    tangentX = tx;
+                    tangentY = ty;
+                    break;
+                }
+            }
+        }
+
+        if (onSlope) {
+            grounded = true;
+            
+            let currentSlopeSpeed = vx * tangentX + vy * tangentY;
+
+            if (!rope.active && dashActiveTimer <= 0) {
+                let gravityAccelerationConstant = 0.45; 
+                currentSlopeSpeed += gravityAccelerationConstant * tangentY;
+            }
+
+            vx = tangentX * currentSlopeSpeed;
+            vy = tangentY * currentSlopeSpeed;
+
+            px += vx;
+            py = snapY; 
+        } else {
+            px += vx;
+            py += vy;
+        }
 
         let currentSpeed = Math.sqrt(vx * vx + vy * vy);
         if (dashActiveTimer > 0 || currentSpeed > 16.0) {
@@ -243,88 +425,40 @@ function loop() {
             stuckFrames = 0;
         }
 
-        grounded = false;
-        for (let s of slopes) {
-            let x1 = s[0], y1 = s[1], x2 = s[2], y2 = s[3];
-            let dx = x2 - x1, dy = y2 - y1;
-            let segLength = Math.sqrt(dx * dx + dy * dy);
-            let tx = dx / segLength, ty = dy / segLength;
-            let pAx = px - x1, pAy = py - y1;
 
-            let projection = pAx * tx + pAy * ty;
-            let t = Math.max(0, Math.min(segLength, projection));
-            let closestX = x1 + t * tx, closestY = y1 + t * ty;
-
-            let distVecX = px - closestX, distVecY = py - closestY;
-            let distance = Math.sqrt(distVecX * distVecX + distVecY * distVecY);
-
-            if (distance <= radius && px >= Math.min(x1, x2) - 2 && px <= Math.max(x1, x2) + 2) {
-                if (vy >= -0.5 && py <= closestY + 2) {
+        if (!onSlope) {
+            grounded = false;
+            for (let p of platforms) {
+                if (px + radius > p[0] && px - radius < p[0] + p[2] && 
+                    py + radius > p[1] && py - radius < p[1] + p[3]) {
                     
                     if (rope.active) {
-                        if (currentSpeed < 0.5) {
-                            py = closestY - radius;
-                            grounded = true;
-                            vx = 0;
-                            vy = 0;
+                        if (Math.abs(vx) >= 0.5) {
+                            if (py > p[1]) {
+                                py = p[1] - radius;
+                                if (vy > 0) vy = 0;
+                            }
+                            rope.length -= 6; 
+                            if (rope.length < 40) rope.length = 40; 
+                            
+                            let dx = px - rope.x, dy = py - rope.y;
+                            let currentDist = Math.sqrt(dx * dx + dy * dy);
+                            if (currentDist > 0) {
+                                px = rope.x + (dx / currentDist) * rope.length;
+                                py = rope.y + (dy / currentDist) * rope.length;
+                            }
+                            if (py > p[1] - radius) py = p[1] - radius;
                         } else {
-                            py = closestY - radius;
-                            grounded = true;
-                            let currentSpeedOnSlope = vx * tx + vy * ty;
-                            vx = currentSpeedOnSlope * tx;
-                            vy = currentSpeedOnSlope * ty;
-                            rope.length -= 3;
-                            if (rope.length < 40) rope.length = 40;
-                        }
-                    } else {
-                        py = closestY - radius;
-                        grounded = true;
-
-                        let currentSpeedOnSlope = vx * tx + vy * ty;
-                        vx = currentSpeedOnSlope * tx;
-                        vy = currentSpeedOnSlope * ty;
-
-                        if (dashActiveTimer <= 0) {
-                            let gravityPull = 0.4 * ty; 
-                            vx += gravityPull * tx;
-                            vy += gravityPull * ty;
-                        }
-                    }
-                }
-            }
-        }
-
-        for (let p of platforms) {
-            if (px + radius > p[0] && px - radius < p[0] + p[2] && 
-                py + radius > p[1] && py - radius < p[1] + p[3]) {
-                
-                if (rope.active) {
-                    if (Math.abs(vx) >= 0.5) {
-                        if (py > p[1]) {
                             py = p[1] - radius;
-                            if (vy > 0) vy = 0;
+                            vy = 0;
+                            grounded = true;
                         }
-                        
-                        rope.length -= 6; 
-                        if (rope.length < 40) rope.length = 40; 
-                        
-                        let dx = px - rope.x, dy = py - rope.y;
-                        let currentDist = Math.sqrt(dx * dx + dy * dy);
-                        if (currentDist > 0) {
-                            px = rope.x + (dx / currentDist) * rope.length;
-                            py = rope.y + (dy / currentDist) * rope.length;
-                        }
-                        if (py > p[1] - radius) py = p[1] - radius;
-                    } else {
-                        py = p[1] - radius;
-                        vy = 0;
+                    } else if (vy > 0 && oldPy + radius <= p[1] + 12) { 
+                        py = p[1] - radius; 
+                        vy = 0; 
                         grounded = true;
+                        dashActiveTimer = 0; 
                     }
-                } else if (vy > 0 || dashActiveTimer > 0) { 
-                    py = p[1] - radius; 
-                    vy = 0; 
-                    grounded = true;
-                    dashActiveTimer = 0; 
                 }
             }
         }
@@ -347,104 +481,88 @@ function loop() {
             py + radius > goal.y && py - radius < goal.y + goal.h) {
             gameState = "VICTORY";
         }
+    }
 
-        let targetCamX = px - canvas.width / 2;
-        let targetCamY = py - canvas.height / 2;
-        camX += (targetCamX - camX) * camSmoothing;
-        camY += (targetCamY - camY) * camSmoothing;
-        if (camX < 0) camX = 0; 
+    let targetCamX = px - canvas.width / 2;
+    let targetCamY = py - canvas.height / 2;
+    camX += (targetCamX - camX) * camSmoothing;
+    camY += (targetCamY - camY) * camSmoothing;
+    if (camX < 0) camX = 0; 
 
-        ctx.save(); 
-        ctx.translate(-camX, -camY); 
+    ctx.save(); 
+    ctx.translate(-camX, -camY); 
 
-        for (let i = speedLines.length - 1; i >= 0; i--) {
-            let sl = speedLines[i];
-            sl.alpha -= 0.05; 
-            
-            if (sl.alpha <= 0) {
-                speedLines.splice(i, 1);
-                continue;
-            }
-
-            ctx.strokeStyle = `rgba(255, 255, 255, ${sl.alpha})`;
-            ctx.lineWidth = sl.width * sl.alpha;
-            ctx.lineCap = 'round';
-            
-            ctx.beginPath();
-            ctx.moveTo(sl.x, sl.y);
-            ctx.lineTo(sl.x - vx * 2.5, sl.y - vy * 2.5);
-            ctx.stroke();
+    for (let i = speedLines.length - 1; i >= 0; i--) {
+        let sl = speedLines[i];
+        if (gameState === "PLAYING") sl.alpha -= 0.05; 
+        if (sl.alpha <= 0) {
+            speedLines.splice(i, 1);
+            continue;
         }
+        ctx.strokeStyle = `rgba(255, 255, 255, ${sl.alpha})`;
+        ctx.lineWidth = sl.width * sl.alpha;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(sl.x, sl.y);
+        ctx.lineTo(sl.x - vx * 2.5, sl.y - vy * 2.5);
+        ctx.stroke();
+    }
 
-        ctx.fillStyle = '#666'; 
-        for (let p of platforms) ctx.fillRect(p[0], p[1], p[2], p[3]);
+    ctx.fillStyle = '#666'; 
+    for (let p of platforms) ctx.fillRect(p[0], p[1], p[2], p[3]);
 
-        ctx.fillStyle = '#9b59b6';
-        for (let cp of checkpoints) ctx.fillRect(cp[0], cp[1], cp[2], cp[3]);
+    ctx.fillStyle = '#9b59b6';
+    for (let cp of checkpoints) ctx.fillRect(cp[0], cp[1], cp[2], cp[3]);
 
-        ctx.strokeStyle = '#f1c40f'; ctx.lineWidth = 6; ctx.lineCap = 'round';
-        for (let s of slopes) {
-            ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(s[2], s[3]); ctx.stroke();
-        }
+    ctx.strokeStyle = '#f1c40f'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+    for (let s of slopes) {
+        ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(s[2], s[3]); ctx.stroke();
+    }
 
-        ctx.fillStyle = '#2ecc71'; ctx.fillRect(goal.x, goal.y, goal.w, goal.h);
+    ctx.fillStyle = '#2ecc71'; ctx.fillRect(goal.x, goal.y, goal.w, goal.h);
 
-        if (rope.active) {
-            ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 3;
-            ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(rope.x, rope.y); ctx.stroke();
-        }
+    if (rope.active) {
+        ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(rope.x, rope.y); ctx.stroke();
+    }
 
-        ctx.save();                 
-        ctx.translate(px, py); ctx.rotate(angle);          
-        ctx.fillStyle = (dashCooldown === 0) ? '#5dade2' : '#3498db';
-        ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = '#2c3e50'; ctx.lineWidth = 4;
-        ctx.beginPath(); ctx.moveTo(-radius, 0); ctx.lineTo(radius, 0); ctx.stroke();
-        ctx.restore();              
+    ctx.save();                 
+    ctx.translate(px, py); ctx.rotate(angle);          
+    ctx.fillStyle = (dashCooldown === 0) ? '#5dade2' : '#3498db';
+    ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#2c3e50'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(-radius, 0); ctx.lineTo(radius, 0); ctx.stroke();
+    ctx.restore();              
 
-        ctx.save();
-        ctx.translate(px, py - 30); 
+    ctx.save();
+    ctx.translate(px, py - 30); 
+    let currentSpeed = Math.sqrt(vx * vx + vy * vy);
+    let mph = Math.round(currentSpeed * 4);
+    ctx.fillStyle = (mph > 80) ? '#00f3ff' : 'rgba(255, 255, 255, 0.5)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText(mph + " MPH", 0, 0);
+    ctx.restore();
 
-        let mph = Math.round(currentSpeed * 4);
+    ctx.restore(); 
 
-        ctx.fillStyle = (mph > 80) ? '#00f3ff' : 'rgba(255, 255, 255, 0.5)';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-
-        ctx.font = 'bold 12px sans-serif';
-        ctx.fillText(mph + " MPH", 0, 0);
-
-        ctx.restore();
-
-        ctx.restore(); 
-
-    } else if (gameState === "VICTORY") {
-        ctx.fillStyle = 'rgba(20, 20, 20, 0.85)';
+    if (gameState === "VICTORY") {
+        ctx.fillStyle = 'rgba(34, 34, 34, 0.95)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        ctx.fillStyle = '#2c3e50';
-        ctx.strokeStyle = '#2ecc71';
-        ctx.lineWidth = 4;
-        ctx.roundRect((canvas.width/2) - 200, (canvas.height/2) - 130, 400, 260, 15);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.fillStyle = '#2ecc71';
-        ctx.font = 'bold 36px sans-serif';
+        ctx.fillStyle = '#fff';
+        ctx.font = '30px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText("VICTORY!", canvas.width / 2, (canvas.height/2) - 50);
+        ctx.fillText("VICTORY", canvas.width / 2, (canvas.height/2) - 40);
 
-        ctx.fillStyle = '#ecf0f1';
-        ctx.font = '18px sans-serif';
-        ctx.fillText("You crossed the chasms and completed the track!", canvas.width / 2, (canvas.height/2));
+        ctx.fillStyle = '#aaa';
+        ctx.font = '14px sans-serif';
+        ctx.fillText("YOU WINNNNNNN.", canvas.width / 2, (canvas.height/2) + 10);
 
-        ctx.fillStyle = '#e67e22';
-        ctx.roundRect((canvas.width/2) - 125, (canvas.height/2) + 40, 250, 45, 8);
-        ctx.fill();
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 15px sans-serif';
-        ctx.fillText("PRESS SPACE TO RESTART", canvas.width / 2, (canvas.height/2) + 68);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.fillText("PRESS SPACE TO RESTART", canvas.width / 2, (canvas.height/2) + 80);
     }
 
     requestAnimationFrame(loop);
