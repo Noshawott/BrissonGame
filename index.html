@@ -33,7 +33,7 @@
 </head>
 <body>
 
-    <h3 id="ui-text">Floating Arc Speedometer Active! Watch your MPH hit redline on dashes. [F11 Fullscreen]</h3>
+    <h3 id="ui-text">[f11] to fullscreen.</h3>
     <canvas id="canvas"></canvas>
 
 <script>
@@ -47,42 +47,33 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// ENGINE STATE MACHINE
 let gameState = "PLAYING";
 
-// Player variables
 let px = 80, py = 100, vx = 0, vy = 0, angle = 0, grounded = false;
 const radius = 15;
 
-// TRACKING STUCK TIME FOR ADAPTIVE REELING
 let stuckFrames = 0;
 
-// DASH & SPEED LINES
 let dashCooldown = 0;      
 let dashActiveTimer = 0;   
 let speedLines = [];       
 
-// DYNAMIC CHECKPOINT TRACKING METRICS
 let checkpoint = { x: 80, y: 100 }; 
 
-// Camera states
 let camX = px - canvas.width / 2;
 let camY = py - canvas.height / 2;
 const camSmoothing = 0.08;
 
-// Rope variables
 let rope = { active: false, x: 0, y: 0, length: 0 };
 
-// Platforms [x, y, width, height]
 const platforms = [
-    [0, 150, 200, 30],       // Start platform
-    [550, 230, 150, 30],     // Island Platform 1
-    [1050, 320, 150, 30],    // Island Platform 2
-    [1550, 420, 150, 30],    // Island Platform 3
-    [2100, 480, 200, 30],    // Island Platform 4
-    [2700, 560, 400, 30],    // Final goal floor
-    
-    // ENHANCED SKY-HIGH ANCHORS
+    [0, 150, 200, 30],       
+    [550, 230, 150, 30],     
+    [1050, 320, 150, 30],    
+    [1550, 420, 150, 30],    
+    [2100, 480, 200, 30],    
+    [2700, 560, 400, 30],    
+    //grapple platforms
     [250, -180, 250, 40],      
     [750, -150, 250, 40],      
     [1250, -120, 250, 40],    
@@ -90,7 +81,6 @@ const platforms = [
     [2350, -80, 300, 40]     
 ];
 
-// Slopes [x1, y1, x2, y2]
 const slopes = [
     [200, 150, 450, 230],    
     [700, 230, 950, 320],   
@@ -99,7 +89,6 @@ const slopes = [
     [2300, 480, 2550, 560]   
 ];
 
-// Checkpoints [x, y, width, height]
 const checkpoints = [
     [570, 210, 30, 20],     
     [1570, 400, 30, 20],    
@@ -123,24 +112,20 @@ window.onkeyup = (e) => keys[e.key] = false;
 function triggerDash() {
     if (dashCooldown > 0 || gameState !== "PLAYING") return;
 
-    let dx = 0; let dy = 0;
+    let dx = 0; 
+    let dy = 0; 
+
     if (keys['ArrowLeft'] || keys['a']) dx = -1;
     if (keys['ArrowRight'] || keys['d']) dx = 1;
-    if (keys['ArrowUp'] || keys['w'] || keys[' ']) dy = -1;
-    if (keys['ArrowDown'] || keys['s']) dy = 1;
 
-    if (dx === 0 && dy === 0) {
-        dx = vx >= 0 ? 1 : -1;
+    if (dx === 0) {
+        return; 
     }
-
-    let len = Math.sqrt(dx * dx + dy * dy);
-    dx /= len; dy /= len;
 
     const dashPower = 32;
     vx = dx * dashPower;
-    vy = dy * dashPower;
+    vy = dy * dashPower; 
 
-    rope.active = false;
     grounded = false;
 
     dashActiveTimer = 15; 
@@ -167,7 +152,6 @@ function respawnPlayerAtCheckpoint() {
     speedLines = [];
 }
 
-// --- ROPE INTERACTION ---
 canvas.onmousedown = (e) => {
     if (gameState !== "PLAYING") return; 
     
@@ -197,7 +181,6 @@ function loop() {
         if (dashCooldown > 0) dashCooldown--;
         if (dashActiveTimer > 0) dashActiveTimer--;
 
-        // 1. Movement Calculations
         let accel = rope.active ? 0.05 : 0.15; 
         if (keys['ArrowLeft'] || keys['a']) vx = Math.max(-12, vx - accel);
         else if (keys['ArrowRight'] || keys['d']) vx = Math.min(12, vx + accel);
@@ -216,7 +199,6 @@ function loop() {
         px += vx;
         py += vy;
 
-        // SPEED LINES EMITTER
         let currentSpeed = Math.sqrt(vx * vx + vy * vy);
         if (dashActiveTimer > 0 || currentSpeed > 16.0) {
             let particleCount = dashActiveTimer > 0 ? 3 : 1;
@@ -235,7 +217,6 @@ function loop() {
             }
         }
 
-        // 2. FIXED-LENGTH ROPE SWING & ADAPTIVE STUCK WINCH LOGIC
         if (rope.active) {
             if (grounded && currentSpeed < 0.5) {
                 stuckFrames++;
@@ -262,7 +243,6 @@ function loop() {
             stuckFrames = 0;
         }
 
-        // 3. SLOPE PHYSICS
         grounded = false;
         for (let s of slopes) {
             let x1 = s[0], y1 = s[1], x2 = s[2], y2 = s[3];
@@ -314,7 +294,6 @@ function loop() {
             }
         }
 
-        // 4. Flat Platform Landings & Robust Phasing Defenses
         for (let p of platforms) {
             if (px + radius > p[0] && px - radius < p[0] + p[2] && 
                 py + radius > p[1] && py - radius < p[1] + p[3]) {
@@ -350,7 +329,6 @@ function loop() {
             }
         }
 
-        // 5. CHECKPOINT REGISTRATION
         for (let cp of checkpoints) {
             if (px + radius > cp[0] && px - radius < cp[0] + cp[2] &&
                 py + radius > cp[1] && py - radius < cp[1] + cp[3]) {
@@ -365,24 +343,20 @@ function loop() {
             respawnPlayerAtCheckpoint();
         }
 
-        // 6. Check Win Condition
         if (px + radius > goal.x && px - radius < goal.x + goal.w &&
             py + radius > goal.y && py - radius < goal.y + goal.h) {
             gameState = "VICTORY";
         }
 
-        // 7. Dynamic Camera Tracking
         let targetCamX = px - canvas.width / 2;
         let targetCamY = py - canvas.height / 2;
         camX += (targetCamX - camX) * camSmoothing;
         camY += (targetCamY - camY) * camSmoothing;
         if (camX < 0) camX = 0; 
 
-        // 8. RENDER GAMEPLAY LAYER
         ctx.save(); 
         ctx.translate(-camX, -camY); 
 
-        // RENDER CARTOON SPEED LINES
         for (let i = speedLines.length - 1; i >= 0; i--) {
             let sl = speedLines[i];
             sl.alpha -= 0.05; 
@@ -402,30 +376,24 @@ function loop() {
             ctx.stroke();
         }
 
-        // Platforms & Extended Anchors (Grey)
         ctx.fillStyle = '#666'; 
         for (let p of platforms) ctx.fillRect(p[0], p[1], p[2], p[3]);
 
-        // Draw Checkpoints (Purple)
         ctx.fillStyle = '#9b59b6';
         for (let cp of checkpoints) ctx.fillRect(cp[0], cp[1], cp[2], cp[3]);
 
-        // Yellow Slopes
         ctx.strokeStyle = '#f1c40f'; ctx.lineWidth = 6; ctx.lineCap = 'round';
         for (let s of slopes) {
             ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(s[2], s[3]); ctx.stroke();
         }
 
-        // Goal Flag
         ctx.fillStyle = '#2ecc71'; ctx.fillRect(goal.x, goal.y, goal.w, goal.h);
 
-        // Active Grapple Wire
         if (rope.active) {
             ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 3;
             ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(rope.x, rope.y); ctx.stroke();
         }
 
-        // Player Avatar Ball
         ctx.save();                 
         ctx.translate(px, py); ctx.rotate(angle);          
         ctx.fillStyle = (dashCooldown === 0) ? '#5dade2' : '#3498db';
@@ -434,58 +402,21 @@ function loop() {
         ctx.beginPath(); ctx.moveTo(-radius, 0); ctx.lineTo(radius, 0); ctx.stroke();
         ctx.restore();              
 
-        // =========================================================================
-        // NEW FEATURE: FLOATING CIRCULAR SPEEDOMETER UI
-        // Renders at a fixed offset directly above the player's coordinate space.
-        // =========================================================================
         ctx.save();
-        ctx.translate(px, py - 45); // Float 45px directly above the ball
+        ctx.translate(px, py - 30); 
 
-        // Calculate velocity-to-MPH math metrics
         let mph = Math.round(currentSpeed * 4);
-        let maxMph = 130; 
-        let speedPercent = Math.min(1, mph / maxMph);
 
-        // 1. Draw Subtle Translucent Dial Plate Background
-        ctx.fillStyle = 'rgba(20, 20, 20, 0.4)';
-        ctx.beginPath();
-        ctx.arc(0, 0, 22, 0, Math.PI * 2);
-        ctx.fill();
-
-        // 2. Draw Speed Bar Circular Background Track (Dark Gray)
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-        ctx.lineWidth = 4;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        // Standard arc starting from top (-90 degrees) spanning full loop
-        ctx.arc(0, 0, 16, -Math.PI / 2, (Math.PI * 2) - Math.PI / 2);
-        ctx.stroke();
-
-        // 3. Draw Dynamic Filled Circular Speed Bar Gauge (Neon Cyan/Orange mix based on redline)
-        let barColor = (mph > 100) ? '#e67e22' : '#00f3ff';
-        ctx.strokeStyle = barColor;
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        // End angle scales according to speed percentage tracking
-        let endAngle = (-Math.PI / 2) + (Math.PI * 2 * speedPercent);
-        ctx.arc(0, 0, 16, -Math.PI / 2, endAngle);
-        ctx.stroke();
-
-        // 4. Render Numeric MPH Text Centered inside the Ring
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 11px monospace';
+        ctx.fillStyle = (mph > 80) ? '#00f3ff' : 'rgba(255, 255, 255, 0.5)';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(mph, 0, -1);
 
-        // 5. Render Label String right above the Ring boundary
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-        ctx.font = 'bold 8px sans-serif';
-        ctx.fillText("MPH", 0, -25);
+        ctx.font = 'bold 12px sans-serif';
+        ctx.fillText(mph + " MPH", 0, 0);
 
         ctx.restore();
 
-        ctx.restore(); // Final camera restore
+        ctx.restore(); 
 
     } else if (gameState === "VICTORY") {
         ctx.fillStyle = 'rgba(20, 20, 20, 0.85)';
